@@ -1,0 +1,86 @@
+# Install required packages
+!pip install mlxtend --quiet
+
+# Imports
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from mlxtend.frequent_patterns import fpgrowth, association_rules
+from mlxtend.preprocessing import TransactionEncoder
+import networkx as nx
+import warnings
+
+# Suppress specific warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+# Sample dataset
+dataset = [
+    ['milk', 'bread', 'nuts', 'apple'],
+    ['milk', 'bread', 'nuts'],
+    ['milk', 'bread'],
+    ['milk', 'bread', 'apple'],
+    ['milk', 'bread', 'apple']
+]
+
+print(dataset)
+# Transaction Encoding
+te = TransactionEncoder()
+te_ary = te.fit(dataset).transform(dataset)
+df = pd.DataFrame(te_ary, columns=te.columns_)
+
+# FP-Growth Algorithm
+frequent_itemsets = fpgrowth(df, min_support=0.6, use_colnames=True)
+
+# Association Rules
+rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1.0)
+
+#  Fix: Drop rows with NaN or inf values
+rules.replace([np.inf, -np.inf], np.nan, inplace=True)
+rules.dropna(inplace=True)
+rules.dropna(inplace=True)
+
+# Format for visualization
+frequent_itemsets['itemsets_str'] = frequent_itemsets['itemsets'].apply(lambda x: ', '.join(sorted(x)))
+rules['antecedents_str'] = rules['antecedents'].apply(lambda x: ', '.join(sorted(x)))
+rules['consequents_str'] = rules['consequents'].apply(lambda x: ', '.join(sorted(x)))
+
+# ---- Graph 1: Top Frequent Itemsets ----
+plt.figure(figsize=(10, 6))
+top_items = frequent_itemsets.sort_values('support', ascending=False).head(10)
+sns.barplot(x='support', y='itemsets_str', data=top_items, color='steelblue')
+plt.title('Top 10 Frequent Itemsets (FP-Growth)')
+plt.xlabel('Support')
+plt.ylabel('Itemsets')
+plt.show()
+
+# ---- Graph 2: Support vs Confidence Scatter Plot ----
+plt.figure(figsize=(10, 6))
+sns.scatterplot(data=rules, x='support', y='confidence', size='lift', hue='lift',
+                palette='cool', sizes=(40, 400))
+plt.title('Support vs Confidence (FP-Growth Rules)')
+plt.xlabel('Support')
+plt.ylabel('Confidence')
+plt.legend()
+plt.show()
+
+# ---- Graph 3: Heatmap of Lift ----
+pivot = rules.pivot_table(index='antecedents_str', columns='consequents_str', values='lift')
+plt.figure(figsize=(10, 6))
+sns.heatmap(pivot, annot=True, cmap='YlGnBu', fmt=".2f")
+plt.title('Heatmap of Lift (FP-Growth Rules)')
+plt.show()
+
+# ---- Graph 4: Network Graph of Association Rules ----
+G = nx.DiGraph()
+for _, row in rules.iterrows():
+    G.add_edge(row['antecedents_str'], row['consequents_str'],
+               weight=row['lift'], label=f"{row['confidence']:.2f}")
+
+plt.figure(figsize=(12, 8))
+pos = nx.spring_layout(G, k=1)
+nx.draw(G, pos, with_labels=True, node_color='lightblue', node_size=2000, font_size=10, edge_color='gray')
+edge_labels = nx.get_edge_attributes(G, 'label')
+nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
+plt.title("Network Graph of FP-Growth Association Rules")
+plt.show()
